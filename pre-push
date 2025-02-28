@@ -1,0 +1,37 @@
+#!/bin/bash
+
+if ! git diff --cached --quiet; then
+    echo "You have staged but uncommitted changes. Please commit them first before pushing."
+    exit 1
+fi
+
+# 1. Capture the latest commit hash (before version update)
+LATEST_COMMIT=$(git rev-parse --short HEAD)
+echo "Latest commit hash: ${LATEST_COMMIT}"
+
+# 2.  Run bump_version.py to update _version.py
+python bump_version.py
+git add _version.py
+
+# 3.  Extract updated version numbers from _version.py
+MAJOR=$(awk -F '= ' '/MAJOR/ {print $2}' _version.py)
+MINOR=$(awk -F '= ' '/MINOR/ {print $2}' _version.py)
+PATCH=$(awk -F '= ' '/PATCH/ {print $2}' _version.py)
+
+# 4. Generate version.py (contains full version string)
+echo "__version__ = \"${MAJOR}.${MINOR}.${PATCH}+${LATEST_COMMIT}\"" > version.py
+
+# 5. Copy only version.py to relevant directories
+for d in test_lambda; do
+    cp version.py "$d/version.py"
+done
+
+# 6. Stage and commit version files separately (ensuring no commit hash drift)
+git add version.py test_lambda/version.py 
+
+if ! git diff --cached --quiet; then
+    echo "Committing updated version files separately..."
+    git commit -m "Bump version to ${MAJOR}.${MINOR}.${PATCH}+${LATEST_COMMIT}" --no-verify
+fi
+
+echo "Pre-push checks passed. Pushing changes..."
